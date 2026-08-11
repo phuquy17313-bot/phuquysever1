@@ -24,18 +24,19 @@ def init_db():
 init_db()
 app = Flask(__name__)
 
-# Giao diện Web đẹp (HTML/CSS)
+# Giao diện Web tạo key kèm nút xem danh sách
 HTML_INTERFACE = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>PhuQuy Key Admin</title>
     <style>
-        body { font-family: Arial; background: #1a1a1a; color: white; text-align: center; padding: 50px; }
-        .box { background: #2d2d2d; padding: 20px; border-radius: 10px; display: inline-block; width: 350px; }
-        input, select { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; }
-        button { background: #00ff00; border: none; padding: 15px; width: 100%; font-weight: bold; cursor: pointer; }
-        #result { margin-top: 20px; color: yellow; word-break: break-all; }
+        body { font-family: Arial; background: #1a1a1a; color: white; text-align: center; padding: 30px; }
+        .box { background: #2d2d2d; padding: 20px; border-radius: 10px; display: inline-block; width: 380px; }
+        input, select { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; }
+        button { background: #00ff00; border: none; padding: 12px; width: 100%; font-weight: bold; cursor: pointer; color: black; margin-top: 5px; }
+        .btn-list { background: #ffc107; }
+        #result { margin-top: 15px; color: yellow; word-break: break-all; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -44,6 +45,7 @@ HTML_INTERFACE = """
         <select id="type"><option value="VIP">VIP</option><option value="LITE">LITE</option></select>
         <input type="number" id="duration" placeholder="Thời hạn (giây, ví dụ 86400)">
         <button onclick="createKey()">TẠO KEY NGAY</button>
+        <button class="btn-list" onclick="window.location.href='/list-keys'">XEM TẤT CẢ KEY</button>
         <div id="result"></div>
     </div>
     <script>
@@ -73,11 +75,56 @@ def add_key():
     
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO keys (key, key_type, duration, activated_at) VALUES (?, ?, ?, ?)", 
-                   (new_key, k_type, duration, None))
-    conn.commit()
+    try:
+        cursor.execute("INSERT INTO keys (key, key_type, duration, activated_at) VALUES (?, ?, ?, ?)", 
+                       (new_key, k_type, duration, None))
+        conn.commit()
+        return f"Đã tạo thành công {k_type} ({duration}s)"
+    except:
+        return "Key đã tồn tại!"
+    finally:
+        conn.close()
+
+# Trang hiển thị danh sách toàn bộ key
+@app.route("/list-keys", methods=["GET"])
+def list_keys():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT key, key_type, duration, activated_at FROM keys")
+    rows = cursor.fetchall()
     conn.close()
-    return f"Đã tạo thành công {k_type} ( {duration}s )"
+
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Danh Sách Key</title>
+        <style>
+            body { font-family: Arial; background: #1a1a1a; color: white; padding: 20px; }
+            table { width: 100%; border-collapse: collapse; background: #2d2d2d; margin-top: 20px; }
+            th, td { border: 1px solid #444; padding: 10px; text-align: center; }
+            th { background: #333; color: #00ff00; }
+            a { color: #ffc107; text-decoration: none; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h2>DANH SÁCH KEY ĐÃ TẠO</h2>
+        <a href="/">⬅ Quay lại trang chủ</a>
+        <table>
+            <tr>
+                <th>Key</th>
+                <th>Loại</th>
+                <th>Thời hạn (Giây)</th>
+                <th>Trạng thái kích hoạt</th>
+            </tr>
+    """
+    for row in rows:
+        k, k_type, duration, activated_at = row
+        status = "Chưa sử dụng" if activated_at is None else "Đã kích hoạt"
+        html += f"<tr><td><b>{k}</b></td><td>{k_type}</td><td>{duration}s</td><td>{status}</td></tr>"
+
+    html += "</table></body></html>"
+    return html
 
 @app.route("/verify_key", methods=["POST"])
 def verify_key():
@@ -87,6 +134,7 @@ def verify_key():
     cursor = conn.cursor()
     cursor.execute("SELECT key_type, duration, activated_at FROM keys WHERE key = ?", (user_key,))
     row = cursor.fetchone()
+    
     if not row:
         conn.close()
         return jsonify({"valid": False})
