@@ -24,6 +24,7 @@ def init_db():
 init_db()
 app = Flask(__name__)
 
+# Giao diện Web Trang Chủ (Tạo Key)
 HTML_INTERFACE = """
 <!DOCTYPE html>
 <html>
@@ -84,6 +85,39 @@ def add_key():
     finally:
         conn.close()
 
+# API Xóa Key
+@app.route("/delete-key", methods=["GET"])
+def delete_key():
+    key = request.args.get("key")
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM keys WHERE key = ?", (key,))
+    conn.commit()
+    conn.close()
+    return "Đã xóa"
+
+# API Reset / Tạm dừng key (Lưu lại thời gian còn lại, ngắt kích hoạt)
+@app.route("/reset-key", methods=["GET"])
+def reset_key():
+    key = request.args.get("key")
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT duration, activated_at FROM keys WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    if row:
+        duration, activated_at = row
+        if activated_at is not None:
+            elapsed = time.time() - activated_at
+            remaining = max(0, duration - elapsed)
+            cursor.execute("UPDATE keys SET duration = ?, activated_at = NULL WHERE key = ?", (int(remaining), key))
+        else:
+            # Nếu chưa active mà bấm reset thì đưa về trạng thái ban đầu nếu cần
+            cursor.execute("UPDATE keys SET activated_at = NULL WHERE key = ?", (key,))
+        conn.commit()
+    conn.close()
+    return "Đã reset"
+
+# Trang danh sách quản lý Key có nút Xóa và Reset
 @app.route("/list-keys", methods=["GET"])
 def list_keys():
     conn = sqlite3.connect(DB_NAME)
@@ -98,7 +132,8 @@ def list_keys():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Danh Sách Key</title>
+        <title>Quản Lý Key</title>
+        <meta http-equiv="refresh" content="5">
         <style>
             body { font-family: Arial; background: #1a1a1a; color: white; padding: 20px; }
             table { width: 100%; border-collapse: collapse; background: #2d2d2d; margin-top: 20px; }
@@ -108,24 +143,40 @@ def list_keys():
             .active { color: #00ff00; font-weight: bold; }
             .expired { color: #ff4444; font-weight: bold; }
             .unused { color: #ffc107; }
+            .btn-action { padding: 5px 10px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; }
+            .btn-reset { background: #ffc107; color: black; margin-right: 5px; }
+            .btn-delete { background: #dc3545; color: white; }
         </style>
+        <script>
+            function deleteKey(key) {
+                if(confirm('Chắc chắn muốn xóa key: ' + key + ' ?')) {
+                    fetch('/delete-key?key=' + key).then(() => location.reload());
+                }
+            }
+            function resetKey(key) {
+                if(confirm('Reset/Tạm dừng key này về trạng thái chờ nhập lại?')) {
+                    fetch('/reset-key?key=' + key).then(() => location.reload());
+                }
+            }
+        </script>
     </head>
     <body>
-        <h2>DANH SÁCH KEY ĐÃ TẠO</h2>
-        <a href="/">⬅ Quay lại trang chủ</a>
+        <h2>QUẢN LÝ DANH SÁCH KEY</h2>
+        <a href="/">⬅ Quay lại trang chủ tạo key</a>
         <table>
             <tr>
                 <th>Key</th>
                 <th>Loại</th>
-                <th>Thời hạn gốc</th>
-                <th>Trạng thái / Thời gian còn lại</th>
+                <th>Thời hạn chuẩn</th>
+                <th>Trạng thái / Thời gian</th>
+                <th>Hành động</th>
             </tr>
     """
     for row in rows:
         k, k_type, duration, activated_at = row
         
         if activated_at is None:
-            status_text = "<span class='unused'>Chưa kích hoạt</span>"
+            status_text = f"<span class='unused'>Chưa kích hoạt ({duration}s)</span>"
         else:
             elapsed = current_time - activated_at
             remaining = duration - elapsed
@@ -134,11 +185,22 @@ def list_keys():
                 secs = int(remaining % 60)
                 hours = mins // 60
                 mins = mins % 60
-                status_text = f"<span class='active'>Còn lại: {hours}h {mins}m {secs}s</span>"
+                status_text = f"<span class='active'>Đang chạy: {hours}h {mins}m {secs}s</span>"
             else:
                 status_text = "<span class='expired'>Đã hết hạn</span>"
 
-        html += f"<tr><td><b>{k}</b></td><td>{k_type}</td><td>{duration}s</td><td>{status_text}</td></tr>"
+        html += f"""
+        <tr>
+            <td><b>{k}</b></td>
+            <td>{k_type}</td>
+            <td>{duration}s</td>
+            <td>{status_text}</td>
+            <td>
+                <button class="btn-action btn-reset" onclick="resetKey('{k}')">Reset</button>
+                <button class="btn-action btn-delete" onclick="deleteKey('{k}')">Xóa</button>
+            </td>
+        </tr>
+        """
 
     html += "</table></body></html>"
     return html
