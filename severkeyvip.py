@@ -24,7 +24,6 @@ def init_db():
 init_db()
 app = Flask(__name__)
 
-# Giao diện Web tạo key kèm nút xem danh sách
 HTML_INTERFACE = """
 <!DOCTYPE html>
 <html>
@@ -85,7 +84,6 @@ def add_key():
     finally:
         conn.close()
 
-# Trang hiển thị danh sách toàn bộ key
 @app.route("/list-keys", methods=["GET"])
 def list_keys():
     conn = sqlite3.connect(DB_NAME)
@@ -93,6 +91,8 @@ def list_keys():
     cursor.execute("SELECT key, key_type, duration, activated_at FROM keys")
     rows = cursor.fetchall()
     conn.close()
+
+    current_time = time.time()
 
     html = """
     <!DOCTYPE html>
@@ -105,6 +105,9 @@ def list_keys():
             th, td { border: 1px solid #444; padding: 10px; text-align: center; }
             th { background: #333; color: #00ff00; }
             a { color: #ffc107; text-decoration: none; font-weight: bold; }
+            .active { color: #00ff00; font-weight: bold; }
+            .expired { color: #ff4444; font-weight: bold; }
+            .unused { color: #ffc107; }
         </style>
     </head>
     <body>
@@ -114,14 +117,28 @@ def list_keys():
             <tr>
                 <th>Key</th>
                 <th>Loại</th>
-                <th>Thời hạn (Giây)</th>
-                <th>Trạng thái kích hoạt</th>
+                <th>Thời hạn gốc</th>
+                <th>Trạng thái / Thời gian còn lại</th>
             </tr>
     """
     for row in rows:
         k, k_type, duration, activated_at = row
-        status = "Chưa sử dụng" if activated_at is None else "Đã kích hoạt"
-        html += f"<tr><td><b>{k}</b></td><td>{k_type}</td><td>{duration}s</td><td>{status}</td></tr>"
+        
+        if activated_at is None:
+            status_text = "<span class='unused'>Chưa kích hoạt</span>"
+        else:
+            elapsed = current_time - activated_at
+            remaining = duration - elapsed
+            if remaining > 0:
+                mins = int(remaining // 60)
+                secs = int(remaining % 60)
+                hours = mins // 60
+                mins = mins % 60
+                status_text = f"<span class='active'>Còn lại: {hours}h {mins}m {secs}s</span>"
+            else:
+                status_text = "<span class='expired'>Đã hết hạn</span>"
+
+        html += f"<tr><td><b>{k}</b></td><td>{k_type}</td><td>{duration}s</td><td>{status_text}</td></tr>"
 
     html += "</table></body></html>"
     return html
