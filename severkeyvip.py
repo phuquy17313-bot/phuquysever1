@@ -116,7 +116,7 @@ def reset_key():
     conn.close()
     return "Đã reset"
 
-# Trang danh sách quản lý Key
+# Trang danh sách quản lý Key (Lưu trữ vĩnh viễn, không tự xóa)
 @app.route("/list-keys", methods=["GET"])
 def list_keys():
     conn = sqlite3.connect(DB_NAME)
@@ -160,7 +160,7 @@ def list_keys():
         </script>
     </head>
     <body>
-        <h2>QUẢN LÝ DANH SÁCH KEY</h2>
+        <h2>QUẢN LÝ DANH SÁCH KEY (LƯU VĨNH VIỄN)</h2>
         <a href="/">⬅ Quay lại trang chủ tạo key</a>
         <table>
             <tr>
@@ -171,6 +171,7 @@ def list_keys():
                 <th>Hành động</th>
             </tr>
     """
+    
     for row in rows:
         k, k_type, duration, activated_at = row
         
